@@ -1,0 +1,7 @@
+{
+  "name": "DecodeLabs",
+  "description": "Production-ready web application for DecodeLabs — featuring AWS cloud architecture showcases, React & TypeScript engineering, Nginx ingress proxy specifications, and interactive deployment pipelines.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+

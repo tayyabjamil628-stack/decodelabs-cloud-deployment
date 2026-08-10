@@ -1,0 +1,5 @@
+# DecodeLabs robots.txt
+User-agent: *
+Allow: /
+
+Sitemap: https://decodelabs.cloud/sitemap.xml

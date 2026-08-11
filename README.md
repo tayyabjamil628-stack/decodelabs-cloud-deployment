@@ -9,7 +9,7 @@ A multi-target cloud deployment project demonstrating automated CI/CD delivery o
 
 ## Project Overview
 
-DecodeLabs is a static single-page application built with React 19, TypeScript, and Vite. The engineering focus of this repository isn't the frontend — it's the delivery pipeline: the same build output is shipped to four independent hosting targets through two GitHub Actions workflows, using GitHub's OIDC identity provider instead of long-lived AWS credentials.
+DecodeLabs is a static single-page application built with React 19, TypeScript, and Vite. The engineering focus of this repository isn't the frontend — it's the delivery pipeline: Both workflows build the same source revision independently, the AWS workflow then uses S3 as the shared deployment artifact for CloudFront and EC2. is shipped to four independent hosting targets through two GitHub Actions workflows, using GitHub's OIDC identity provider instead of long-lived AWS credentials.
 
 This setup exists to demonstrate, in one place:
 

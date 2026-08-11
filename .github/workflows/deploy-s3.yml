@@ -1,4 +1,4 @@
-name: Deploy DecodeLabs to S3
+name: Deploy DecodeLabs to S3 and EC2
 
 on:
   push:
@@ -11,38 +11,137 @@ permissions:
 
 jobs:
   deploy:
-    name: Build and Deploy to S3
+    name: Build and Deploy to S3 + EC2
     runs-on: ubuntu-latest
 
     steps:
+      # ==========================================
+      # 1. Checkout source code
+      # ==========================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # ==========================================
+      # 2. Setup Node.js
+      # ==========================================
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: npm
 
+      # ==========================================
+      # 3. Install dependencies
+      # ==========================================
       - name: Install dependencies
         run: npm ci
 
+      # ==========================================
+      # 4. Build Vite application
+      # ==========================================
       - name: Build website
         run: npm run build
 
+      # ==========================================
+      # 5. Configure AWS credentials using OIDC
+      # ==========================================
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::017381235934:role/GitHubActions-DecodeLabs-Deploy
           aws-region: ap-south-1
 
-      - name: Deploy to S3
+      # ==========================================
+      # 6. Deploy build to S3
+      # ==========================================
+      - name: Deploy website to S3
         run: |
           aws s3 sync dist/ s3://decodelabs-cloud-deployment \
             --delete \
             --region ap-south-1
 
-      - name: Verify deployment
+      # ==========================================
+      # 7. Verify S3 deployment
+      # ==========================================
+      - name: Verify S3 deployment
         run: |
-          aws s3 ls s3://decodelabs-cloud-deployment \
-            --region ap-south-1
+          echo "Files deployed to S3:"
+          aws s3 ls s3://decodelabs-cloud-deployment/ \
+            --region ap-south-1 \
+            --recursive
+
+      # ==========================================
+      # 8. Send deployment command to EC2
+      # ==========================================
+      - name: Deploy website to EC2 via SSM
+        id: deploy-ec2
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --region ap-south-1 \
+            --instance-ids i-0306fac86dc3753d3 \
+            --document-name "AWS-RunShellScript" \
+            --comment "DecodeLabs website deployment from GitHub Actions" \
+            --parameters 'commands=[
+              "set -e",
+              "echo \"Starting DecodeLabs deployment...\"",
+              "sudo mkdir -p /tmp/decodelabs-deploy",
+              "sudo rm -rf /tmp/decodelabs-deploy/*",
+              "sudo aws s3 sync s3://decodelabs-cloud-deployment/ /tmp/decodelabs-deploy/ --region ap-south-1",
+              "echo \"Downloaded files from S3:\"",
+              "sudo find /tmp/decodelabs-deploy -maxdepth 2 -type f",
+              "sudo mkdir -p /var/www/decodelabs",
+              "sudo rm -rf /var/www/decodelabs/*",
+              "sudo cp -a /tmp/decodelabs-deploy/. /var/www/decodelabs/",
+              "sudo chown -R www-data:www-data /var/www/decodelabs",
+              "sudo chmod -R 755 /var/www/decodelabs",
+              "sudo nginx -t",
+              "sudo systemctl reload nginx",
+              "sudo systemctl is-active nginx",
+              "echo \"DecodeLabs deployment completed successfully.\""
+            ]' \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+          echo "COMMAND_ID=$COMMAND_ID" >> "$GITHUB_ENV"
+
+      # ==========================================
+      # 9. Wait for EC2 deployment
+      # ==========================================
+      - name: Wait for EC2 deployment
+        run: |
+          echo "Waiting for EC2 deployment to finish..."
+
+          aws ssm wait command-executed \
+            --region ap-south-1 \
+            --command-id "$COMMAND_ID" \
+            --instance-id i-0306fac86dc3753d3
+
+      # ==========================================
+      # 10. Show EC2 deployment result
+      # ==========================================
+      - name: Verify EC2 deployment
+        run: |
+          echo "EC2 deployment output:"
+
+          aws ssm get-command-invocation \
+            --region ap-south-1 \
+            --command-id "$COMMAND_ID" \
+            --instance-id i-0306fac86dc3753d3 \
+            --query '{Status:Status,Output:StandardOutputContent,Error:StandardErrorContent}' \
+            --output json
+
+      # ==========================================
+      # 11. Final deployment status
+      # ==========================================
+      - name: Deployment complete
+        run: |
+          echo "========================================="
+          echo " DecodeLabs Deployment Successful"
+          echo "========================================="
+          echo "GitHub Pages : Deployed by deploy-pages.yml"
+          echo "S3            : decodelabs-cloud-deployment"
+          echo "EC2           : i-0306fac86dc3753d3"
+          echo "Web Server    : Nginx"
+          echo "Region        : ap-south-1"
+          echo "========================================="

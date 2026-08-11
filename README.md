@@ -1,147 +1,172 @@
-# DecodeLabs — Cloud Infrastructure & Modern Software Engineering
+# DecodeLabs Cloud Deployment
 
-DecodeLabs is a production-ready, cloud-focused technology web application and digital architectural artifact. It showcases high-availability AWS EC2/S3 infrastructure, Nginx ingress proxy routing, automated delivery pipeline blueprints, and modern full-stack TypeScript/React software engineering practices.
+[![Deploy to GitHub Pages](https://github.com/tayyabjamil628-stack/decodelabs-cloud-deployment/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/tayyabjamil628-stack/decodelabs-cloud-deployment/actions/workflows/deploy-pages.yml)
+[![Deploy DecodeLabs to S3 and EC2](https://github.com/tayyabjamil628-stack/decodelabs-cloud-deployment/actions/workflows/deploy-s3.yml/badge.svg)](https://github.com/tayyabjamil628-stack/decodelabs-cloud-deployment/actions/workflows/deploy-s3.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-24.x-339933?logo=node.js&logoColor=white)](package.json)
 
----
+A multi-target cloud deployment project demonstrating automated CI/CD delivery of a React + TypeScript single-page application to GitHub Pages, Amazon S3 (fronted by Amazon CloudFront), and an Ubuntu EC2 instance running Nginx — all triggered from a single `git push` to `main`.
 
-## 🚀 Key Features & Capabilities
+## Project Overview
 
-- **Pipeline Stage Inspector**: In-depth specification inspector detailing technical parameters for each deployment phase.
-- **Interactive Code Snippet Modal**: Copyable production configuration templates for `nginx.conf`, `docker-compose.yml`, `aws-s3-sync.yml`, and `server.ts`.
-- **Responsive & Accessible UI**: Hand-crafted dark-mode UI with high contrast, focus-visible states, keyboard accessibility, and native `prefers-reduced-motion` support.
-- **Route Fallback & Error Handling**: Custom HTTP 404 page styled with Terminal diagnostics.
+DecodeLabs is a static single-page application built with React 19, TypeScript, and Vite. The engineering focus of this repository isn't the frontend — it's the delivery pipeline: the same build output is shipped to four independent hosting targets through two GitHub Actions workflows, using GitHub's OIDC identity provider instead of long-lived AWS credentials.
 
----
+This setup exists to demonstrate, in one place:
 
-## 🛠️ Technology Stack
+- Multi-target static site deployment from a single build artifact
+- Keyless AWS authentication from CI using GitHub OIDC + an IAM role
+- Agentless EC2 deployment via AWS Systems Manager (no SSH keys)
+- CDN delivery through S3 + CloudFront
+- Parallel, independently-triggered GitHub Actions workflows
 
-- **Frontend Framework**: React 19 + TypeScript (Strict Mode)
-- **Build Tool**: Vite 6
-- **Styling & Design System**: Tailwind CSS v4 + Custom Utility Glass Panels
-- **Icons**: Lucide React
-- **Animations & Micro-interactions**: Motion (`motion/react`)
-- **Web Server Target**: Nginx + Ubuntu 24.04 LTS on AWS EC2
-- **Asset Storage Target**: Amazon S3 (Static Web Hosting)
+AWS services involved: **IAM (OIDC role)**, **S3**, **CloudFront**, **EC2**, **Systems Manager (SSM)**. See [`docs/aws-infrastructure.md`](docs/aws-infrastructure.md) for details on each.
 
----
+## Live Deployments
 
-## 📂 Project Structure
+| Deployment | Platform | Link | Status |
+|---|---|---|---|
+| GitHub Pages | GitHub Pages | [tayyabjamil628-stack.github.io/decodelabs-cloud-deployment](https://tayyabjamil628-stack.github.io/decodelabs-cloud-deployment/) | Operational |
+| CloudFront | AWS CloudFront | [d2dm91yj238ptm.cloudfront.net](https://d2dm91yj238ptm.cloudfront.net/) | Operational |
+| EC2 | AWS EC2 + Nginx | [13.207.40.128](http://13.207.40.128) | Operational |
 
-```text
-├── .env.example            # Environment variable template
-├── index.html              # HTML entry point with SEO, OpenGraph & Twitter tags
-├── metadata.json           # Platform applet metadata & capabilities
-├── package.json            # Project dependencies & npm scripts
-├── public/
-│   ├── robots.txt          # Crawler instructions
-│   └── sitemap.xml         # Search engine index sitemap
-├── src/
-│   ├── App.tsx             # Main application entry & 404 route fallback
-│   ├── main.tsx            # React root DOM mount
-│   ├── index.css           # Global Tailwind styling, custom scrollbars & grid utility
-│   ├── types.ts            # TypeScript interfaces & types
-│   ├── data/
-│   │   └── content.ts      # Company info, capability cards & code snippets
-│   └── components/
-│       ├── Navbar.tsx      # Sticky header with active scroll highlighting
-│       ├── Hero.tsx        # Animated hero section & dual CTAs
-│       ├── About.tsx       # Core engineering pillars
-│       ├── Technology.tsx  # Categorized technology capability cards
-│       ├── FeaturedProject.tsx # Cloud deployment showcase & pipeline inspector
-│       ├── CloudVisualizer.tsx # Terminal mockup & active server visualizer
-│       ├── WhyDecodeLabs.tsx # Engineering ethos & principles
-│       ├── Contact.tsx     # Form with real-time validation & status states
-│       ├── Footer.tsx      # Footer branding & quick links
-│       ├── CodeModal.tsx   # Code snippet viewing dialog
-│       ├── NotFound.tsx    # Production 404 error page
-│       └── ui/
-│           ├── Button.tsx  # Micro-interactive button component
-│           ├── Badge.tsx   # Status & tech pill badges
-│           ├── TechCard.tsx # Animated capability card
-│           └── SectionHeading.tsx # Reusable section titles
+Amazon S3 (`decodelabs-cloud-deployment`) is not a standalone public deployment target — it's the build-artifact origin that CloudFront serves from and that EC2 pulls its files from during deployment. There is no separate S3 static-website URL for this project.
+
+> **Note:** the EC2 endpoint is served over plain HTTP; your browser will show a "Not secure" warning. This is expected — see [Future Improvements](#future-improvements).
+
+## Deployment Architecture
+
+![DecodeLabs Cloud Architecture](docs/images/architecture.png)
+
+A push to `main` triggers two independent GitHub Actions workflows in parallel:
+
+1. **`deploy-pages.yml`** builds the app and publishes it directly to GitHub Pages.
+2. **`deploy-s3.yml`** builds the app, authenticates to AWS via GitHub OIDC (assuming the `GitHubActions-DecodeLabs-Deploy` IAM role), syncs the build to the `decodelabs-cloud-deployment` S3 bucket, then sends a shell command to the EC2 instance via AWS Systems Manager that pulls the same files from S3 and reloads Nginx.
+
+CloudFront serves the S3 bucket's contents at a separate distribution URL. There is no step in either workflow that invalidates the CloudFront cache or explicitly provisions the CloudFront distribution — that configuration was not found in the repository and is treated as out-of-band AWS console setup. See [`docs/architecture.md`](docs/architecture.md) for the full breakdown, including what could and couldn't be verified from the repository.
+
+## CI/CD Pipeline
+
+```
+Developer
+    │
+    ▼
+git push (main)
+    │
+    ├──────────────────────────────┐
+    ▼                               ▼
+deploy-pages.yml                deploy-s3.yml
+    │                               │
+npm install                     npm ci
+    │                               │
+npm run build                   npm run build
+    │                               │
+GitHub Pages                    GitHub OIDC → IAM Role
+                                     │
+                                     ▼
+                                 aws s3 sync → S3 bucket
+                                     │
+                                     ▼
+                            aws ssm send-command → EC2
+                                     │
+                                     ▼
+                            s3 sync (on host) → /var/www/decodelabs
+                                     │
+                                     ▼
+                                nginx -t && systemctl reload nginx
 ```
 
----
+Full workflow-by-workflow breakdown: [`docs/ci-cd.md`](docs/ci-cd.md).
 
-## 💻 Local Development
+## Technologies Used
 
-1. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+**Application**
+- React 19, TypeScript (strict mode)
+- Vite 6
+- Tailwind CSS v4
+- Lucide React (icons), Motion (animation)
 
-2. **Start development server**:
-   ```bash
-   npm run dev
-   ```
-   The application runs on `http://localhost:3000`.
+**CI/CD**
+- GitHub Actions
+- GitHub Pages (`actions/deploy-pages`)
+- GitHub OIDC (`aws-actions/configure-aws-credentials`)
 
-3. **Lint & typecheck**:
-   ```bash
-   npm run lint
-   ```
+**AWS**
+- IAM (OIDC identity federation, IAM role)
+- Amazon S3
+- Amazon CloudFront
+- Amazon EC2 (Ubuntu 24.04 LTS)
+- AWS Systems Manager (Session Manager / `send-command`)
+- Nginx (web server on EC2)
 
-4. **Build for production**:
-   ```bash
-   npm run build
-   ```
-   Outputs static assets into the `dist/` directory.
+Only technologies confirmed in `package.json`, the two workflow files, or the live deployments are listed here. The repository's `package.json` also lists `@google/genai`, `express`, and `dotenv` as dependencies — these are unused scaffolding left over from the project's origin as a Google AI Studio template; the app itself is a static Vite build with no server-side runtime, so they are not listed above. See [Problems Found](docs/troubleshooting.md).
 
----
+## Repository Structure
 
-## ☁️ Production Deployment Concept (AWS EC2 + Nginx)
+```
+.github/
+  workflows/
+    deploy-pages.yml     # Build + publish to GitHub Pages
+    deploy-s3.yml        # Build + deploy to S3, then EC2 via SSM
 
-For deploying this SPA behind Nginx on Ubuntu 24.04 LTS:
+src/                     # React + TypeScript application source
+public/                  # Static assets (robots.txt, sitemap.xml)
+docs/                    # Project documentation (this package)
+  images/                # Architecture diagram + live screenshots
+package.json
+vite.config.ts
+tsconfig.json
+LICENSE
+README.md
+```
 
-1. **Build Static Assets**:
-   ```bash
-   npm run build
-   ```
+## Security
 
-2. **Sync to AWS EC2 or S3**:
-   ```bash
-   aws s3 sync dist/ s3://decodelabs-web-assets/ --delete
-   ```
+**Implemented:**
+- GitHub OIDC federation — the `deploy-s3.yml` workflow assumes an IAM role via short-lived, workflow-scoped OIDC tokens; no long-lived AWS access keys are stored in GitHub Secrets.
+- EC2 deployment via AWS Systems Manager `send-command` — no SSH keys or open port 22 required for deployment.
+- `.gitignore` excludes `.env*` files from version control (with `.env.example` explicitly allowed).
 
-3. **Sample Nginx Configuration (`/etc/nginx/sites-available/decodelabs`)**:
-   ```nginx
-   server {
-       listen 80;
-       server_name decodelabs.cloud www.decodelabs.cloud;
-       return 301 https://$host$request_uri;
-   }
+**Recommended future improvements:**
+- HTTPS/TLS on the EC2 endpoint (currently served over plain HTTP).
+- CloudFront cache invalidation as an explicit pipeline step.
+- Scoping the `GitHubActions-DecodeLabs-Deploy` IAM role/S3 bucket policy to least privilege if not already done (not verifiable from the repository alone).
 
-   server {
-       listen 443 ssl http2;
-       server_name decodelabs.cloud www.decodelabs.cloud;
+Full breakdown: [`docs/security.md`](docs/security.md).
 
-       ssl_certificate /etc/letsencrypt/live/decodelabs.cloud/fullchain.pem;
-       ssl_certificate_key /etc/letsencrypt/live/decodelabs.cloud/privkey.pem;
+## Screenshots
 
-       root /var/www/decodelabs/dist;
-       index index.html;
+### GitHub Pages
+![GitHub Pages](docs/images/github-pages-live.png)
 
-       location / {
-           try_files $uri $uri/ /index.html;
-       }
+### CloudFront
+![CloudFront](docs/images/cloudfront-live.png)
 
-       location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2)$ {
-           expires 1y;
-           add_header Cache-Control "public, immutable";
-       }
-   }
-   ```
+### EC2
+![EC2](docs/images/ec2-live.png)
 
----
+### GitHub Actions
+![GitHub Actions](docs/images/github-actions-runs.png)
 
-## 🔒 Security Notes
+More detail on each screenshot: [`docs/screenshots.md`](docs/screenshots.md).
 
-- **Zero Hardcoded Credentials**: No secrets or private keys are stored in frontend source code or committed to git.
-- **Environment Configuration**: Refer to `.env.example` for required runtime variable names.
-- **Security Headers**: Production Nginx configuration includes HSTS, CSP, and X-Frame-Options headers.
+## Learning Outcomes
 
----
+- Designing and running parallel GitHub Actions workflows from a single trigger
+- Configuring GitHub OIDC federation to AWS IAM (credential-free CI)
+- S3 as a build-artifact origin for CloudFront
+- Agentless server deployment using AWS Systems Manager instead of SSH
+- Nginx configuration, reload, and validation as part of an automated deploy
+- Diagnosing and fixing real CI/CD failures (see [`docs/troubleshooting.md`](docs/troubleshooting.md))
 
-## 📄 License
+## Future Improvements
 
-© DecodeLabs. All rights reserved.
+- Custom domain with HTTPS across all four deployment targets
+- TLS termination on the EC2 instance (currently HTTP-only)
+- Explicit CloudFront cache invalidation step in `deploy-s3.yml`
+- Infrastructure as Code (e.g., Terraform/CloudFormation) for the S3/CloudFront/EC2/IAM resources, which are currently provisioned outside this repository
+- Deployment health checks and rollback on failure
+- Centralized logging/monitoring (CloudWatch) and deployment notifications
+
+## License
+
+Released under the [MIT License](LICENSE).
